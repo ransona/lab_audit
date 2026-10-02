@@ -1,0 +1,12 @@
+[Unit]
+Description=Lab server CPU and GPU telemetry collector
+After=default.target
+
+[Service]
+Type=simple
+ExecStart=/home/adamranson/miniconda3/envs/lab_pipeline/bin/python /home/adamranson/code/labaudit/labmonitor.py --collect
+Restart=always
+RestartSec=10
+
+[Install]
+WantedBy=default.target
