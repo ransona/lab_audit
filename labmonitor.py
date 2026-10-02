@@ -194,7 +194,7 @@ class MonitorTab(QtWidgets.QWidget):
         if cpu:
             times = [datetime.fromisoformat(row[0]) for row in cpu]
             cpu_axis.plot(times, [row[1] for row in cpu], color="#277da1", label="CPU")
-        cpu_axis.set(ylabel="CPU (%)", ylim=(0, 100)); cpu_axis.grid(alpha=.25); cpu_axis.legend(loc="upper right")
+        cpu_axis.set(ylabel="CPU (%)", ylim=(-5, 105), yticks=range(0, 101, 20)); cpu_axis.grid(alpha=.25); cpu_axis.legend(loc="upper right")
         grouped: dict[int, list] = {}
         names = {}
         for row in gpu:
@@ -204,8 +204,8 @@ class MonitorTab(QtWidgets.QWidget):
             label = f"GPU {index} ({names[index]})"
             compute_axis.plot(times, [row[3] for row in rows], label=label)
             memory_axis.plot(times, [100 * row[4] / row[5] if row[5] else 0 for row in rows], label=label)
-        compute_axis.set(ylabel="GPU compute (%)", ylim=(0, 100)); compute_axis.grid(alpha=.25)
-        memory_axis.set(ylabel="GPU memory (%)", xlabel="Time", ylim=(0, 100)); memory_axis.grid(alpha=.25)
+        compute_axis.set(ylabel="GPU compute (%)", ylim=(-5, 105), yticks=range(0, 101, 20)); compute_axis.grid(alpha=.25)
+        memory_axis.set(ylabel="GPU memory (%)", xlabel="Time", ylim=(-5, 105), yticks=range(0, 101, 20)); memory_axis.grid(alpha=.25)
         if grouped: compute_axis.legend(loc="upper right"); memory_axis.legend(loc="upper right")
         locator = AutoDateLocator(); memory_axis.xaxis.set_major_locator(locator); memory_axis.xaxis.set_major_formatter(AutoDateFormatter(locator))
         self.canvas.draw_idle()
