@@ -217,6 +217,7 @@ def scan_repository(repository: Path, progress=None) -> tuple[list[UsageRecord],
 class ScanWorker(QtCore.QObject):
     progress = QtCore.pyqtSignal(int, int, str)
     completed = QtCore.pyqtSignal(object, object)
+    cancelled = QtCore.pyqtSignal()
     failed = QtCore.pyqtSignal(str)
 
     def __init__(self, repository: Path, database_path: Path):
@@ -227,11 +228,18 @@ class ScanWorker(QtCore.QObject):
     @QtCore.pyqtSlot()
     def run(self):
         try:
+            def report(current, total, name):
+                if QtCore.QThread.currentThread().isInterruptionRequested():
+                    raise InterruptedError("Scan cancelled")
+                self.progress.emit(current, total, name)
             records, issues = scan_repository(
                 self.repository,
-                progress=lambda current, total, name: self.progress.emit(current, total, name),
+                progress=report,
             )
             AuditDatabase(self.database_path).replace_records(self.repository, records)
+        except InterruptedError:
+            self.cancelled.emit()
+            return
         except Exception:
             self.failed.emit(traceback.format_exc())
             return
@@ -256,6 +264,7 @@ class LabAuditWindow(QtWidgets.QMainWindow):
         self.issues: list[str] = []
         self.scan_thread: QtCore.QThread | None = None
         self.scan_worker: ScanWorker | None = None
+        self._closing = False
         self.database = AuditDatabase()
         self.plot_period = "month"
         self.plot_end_date = date.today()
@@ -411,8 +420,10 @@ class LabAuditWindow(QtWidgets.QMainWindow):
         self.scan_thread.started.connect(self.scan_worker.run)
         self.scan_worker.progress.connect(self._scan_progress)
         self.scan_worker.completed.connect(self._scan_completed)
+        self.scan_worker.cancelled.connect(self._scan_cancelled)
         self.scan_worker.failed.connect(self._scan_failed)
         self.scan_worker.completed.connect(self.scan_thread.quit)
+        self.scan_worker.cancelled.connect(self.scan_thread.quit)
         self.scan_worker.failed.connect(self.scan_thread.quit)
         self.scan_thread.finished.connect(self.scan_worker.deleteLater)
         self.scan_thread.finished.connect(self._scan_finished)
@@ -446,6 +457,9 @@ class LabAuditWindow(QtWidgets.QMainWindow):
         self.status.setText("Scan failed.")
         QtWidgets.QMessageBox.critical(self, "Lab Audit scan failed", details)
 
+    def _scan_cancelled(self):
+        self.status.setText("Background scan cancelled.")
+
     def _scan_finished(self):
         if self.scan_thread is not None:
             self.scan_thread.deleteLater()
@@ -453,6 +467,19 @@ class LabAuditWindow(QtWidgets.QMainWindow):
         self.scan_worker = None
         self.scan_button.setEnabled(True)
         self.progress.setVisible(False)
+        if self._closing:
+            QtCore.QTimer.singleShot(0, self.close)
+
+    def closeEvent(self, event):
+        """Never let Qt destroy an active scan thread during application exit."""
+        if self.scan_thread is not None and self.scan_thread.isRunning():
+            self._closing = True
+            self.status.setText("Cancelling background scan before closing…")
+            self.scan_thread.requestInterruption()
+            self.hide()
+            event.ignore()
+            return
+        event.accept()
 
     def _rebuild_user_filter(self):
         selected = self.user_filter.currentText()
